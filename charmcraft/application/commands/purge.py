@@ -52,8 +52,6 @@ class PurgeCommand(CharmcraftCommand):
 
    
     # Public entry point
-    
-
     def run(self, parsed_args) -> None:
         # Resolve behavior
         purge_cache = True
@@ -82,8 +80,6 @@ class PurgeCommand(CharmcraftCommand):
 
     
     # Cache handling
-    
-
     def _purge_cache(self) -> None:
         cache_dir = Path.home() / ".cache" / "charmcraft"
 
@@ -96,7 +92,6 @@ class PurgeCommand(CharmcraftCommand):
 
     
     # LXD handling
-    
 
     def _purge_build_containers(self, include_running: bool) -> None:
         containers = self._list_lxd_containers()

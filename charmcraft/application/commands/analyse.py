@@ -40,7 +40,7 @@ if TYPE_CHECKING:
 
 
 class Analyse(base.CharmcraftCommand):
-    """Run analysis on a built charm."""
+    """Run analysis on a built charm or charm directory."""
 
     name = "analyse"
     help_msg = "Analyse a charm"
@@ -57,19 +57,24 @@ class Analyse(base.CharmcraftCommand):
             help=argparse.SUPPRESS,
         )
         parser.add_argument("--ignore", help="Linters to ignore (comma separated)")
-        parser.add_argument("filepath", type=pathlib.Path, help="The charm to analyse")
+        parser.add_argument(
+            "filepath",
+            type=pathlib.Path,
+            help="The charm file or directory to analyse",
+        )
 
     def run(self, parsed_args: argparse.Namespace) -> int:
         """Run the 'analyse' command."""
         if not parsed_args.filepath.exists():
             raise errors.CraftError(
-                f"Charm file not found: {str(parsed_args.filepath)}",
+                f"Charm path not found: {str(parsed_args.filepath)}",
                 retcode=1,
                 reportable=False,
                 logpath_report=False,
             )
 
         ignore = parsed_args.ignore.split(",") if parsed_args.ignore else []
+
         if parsed_args.format:
             return self._run_formatted(parsed_args.filepath, ignore=ignore)
         return self._run_streaming(parsed_args.filepath, ignore=ignore)
@@ -77,7 +82,16 @@ class Analyse(base.CharmcraftCommand):
     def _run_formatted(self, filepath: pathlib.Path, *, ignore: Container[str]) -> int:
         """Run the command, formatting the output into JSON or similar at the end."""
         svc = cast("AnalysisService", self._services.get("analysis"))
-        results = list(svc.lint_file(filepath))
+
+        if filepath.is_dir():
+            results = list(
+                svc.lint_directory(filepath, ignore=ignore, include_ignored=False)
+            )
+        else:
+            results = list(
+                svc.lint_file(filepath, ignore=ignore, include_ignored=False)
+            )
+
         emit.message(json.dumps(results, indent=4, default=pydantic_encoder))
         return max(r.level for r in results).return_code
 
@@ -85,10 +99,21 @@ class Analyse(base.CharmcraftCommand):
         """Run the command, printing linter results as we get them."""
         max_level = lint.ResultLevel.OK
         svc = cast("AnalysisService", self._services.get("analysis"))
+
+        # Choose correct lint method
+        if filepath.is_dir():
+            lint_iter = svc.lint_directory(
+                filepath, ignore=ignore, include_ignored=False
+            )
+        else:
+            lint_iter = svc.lint_file(
+                filepath, ignore=ignore, include_ignored=False
+            )
+
         with emit.progress_bar(
             f"Linting {filepath.name}...", total=len(linters.CHECKERS)
         ) as progress:
-            for result in svc.lint_file(filepath, ignore=ignore, include_ignored=False):
+            for result in lint_iter:
                 emit.progress(str(result), permanent=True)
                 max_level = max(result.level, max_level)
                 progress.advance(1)
